@@ -1,0 +1,26 @@
+#!/bin/bash -login
+
+### define resources needed:
+### walltime - how long you expect the job to run
+#PBS -l walltime=01:00:00
+ 
+### nodes:ppn - how many nodes & cores per node (ppn) that you require
+#PBS -l nodes=4:ppn=2:gpus=4
+#PBS -l feature='gpgpu:intel16'
+
+### mem: amount of memory that the job will need
+#PBS -l mem=2gb
+ 
+### you can give your job a name for easier identification
+#PBS -N tensorjob
+
+### load necessary modules, e.g.
+source /opt/software/tensorflow/0.12/usetfgpu12
+
+
+### change to the working directory where your code is located
+cd /mnt/home/kinggra1/Documents/CSE802/project
+ 
+### call your executable
+###mpirun -np 5 mnist.py
+python network.py
