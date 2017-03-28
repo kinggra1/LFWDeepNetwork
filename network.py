@@ -3,6 +3,8 @@ from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
 sess = tf.InteractiveSession()
 
+import numpy as np
+
 import directory
 
 files = directory.get_cropped_CASIA_files()
@@ -140,12 +142,42 @@ correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 sess.run(tf.initialize_all_variables())
 
+
+
+
+
+
+
+def get_training_batch(size):
+  
+  data = [[],[]]
+  for i in range(size):
+    image_orig = tf.image.decode_jpeg(files[i][0])
+    image = tf.image.resize_images(image_orig, [100, 100])
+    image.set_shape((100, 100, 1))
+
+    one_hot = [0]*10575
+    one_hot[i] = 1
+
+    data[0].append(image.eval())
+    data[1].append(one_hot)
+  return (np.array(data[0]), np.array(data[1]))
+
+
+
+
+
+
 logfile = open("teststats.txt", 'w')
 
 for i in range(10):
   #batch = mnist.train.next_batch(50)
-  batch = [[[0]*10000], [[0]*10575]]
-  if i%100 == 0:
+  batch = get_training_batch(2)
+  #batch = [[[[0]*10000], [[0]*10000]], [[[0]*10575], [0]*10575]]
+  print(i)
+  print(batch[0])
+  print(batch[1])
+  if i%100 == 0 or 1:
     train_accuracy = accuracy.eval(feed_dict={
         x:batch[0], y_: batch[1], keep_prob: 1.0})
     print("step %d, training accuracy %g"%(i, train_accuracy))
