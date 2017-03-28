@@ -56,7 +56,7 @@ y_ = tf.placeholder(tf.float32, shape=[None, OUTPUT_SIZE])
 #W_conv1 = weight_variable([5, 5, 1, 32])
 W_conv11 = weight_variable([3, 3, 1, 32])
 b_conv11 = bias_variable([32])
-W_conv12 = weight_variable([3, 3, 1, 64])
+W_conv12 = weight_variable([3, 3, 32, 64])
 b_conv12 = bias_variable([64])
 
 x_image = tf.reshape(x, [-1, INPUT_WIDTH, INPUT_HEIGHT, 1])
@@ -67,16 +67,16 @@ h_pool1 = max_pool_2x2(h_conv12)
 
 W_conv21 = weight_variable([3, 3, 64, 64])
 b_conv21 = bias_variable([64])
-W_conv22 = weight_variables([3, 3, 64, 128])
+W_conv22 = weight_variable([3, 3, 64, 128])
 b_conv22 = bias_variable([128])
 
 h_conv21 = tf.nn.relu(conv2d(h_pool1, W_conv21) + b_conv21)
 h_conv22 = tf.nn.relu(conv2d(h_conv21, W_conv22) + b_conv22)
-h_pool2 = max_pool_2x2(h_conv12)
+h_pool2 = max_pool_2x2(h_conv22)
 
 W_conv31 = weight_variable([3, 3, 128, 96])
 b_conv31 = bias_variable([96])
-W_conv32 = weight_variables([3, 3, 96, 192])
+W_conv32 = weight_variable([3, 3, 96, 192])
 b_conv32 = bias_variable([192])
 
 h_conv31 = tf.nn.relu(conv2d(h_pool2, W_conv31) + b_conv31)
@@ -85,7 +85,7 @@ h_pool3 = max_pool_2x2(h_conv32)
 
 W_conv41 = weight_variable([3, 3, 192, 128])
 b_conv41 = bias_variable([128])
-W_conv42 = weight_variables([3, 3, 128, 256])
+W_conv42 = weight_variable([3, 3, 128, 256])
 b_conv42 = bias_variable([256])
 
 h_conv41 = tf.nn.relu(conv2d(h_pool3, W_conv41) + b_conv41)
@@ -94,21 +94,29 @@ h_pool4 = max_pool_2x2(h_conv42)
 
 W_conv51 = weight_variable([3, 3, 256, 160])
 b_conv51 = bias_variable([160])
-W_conv52 = weight_variables([3, 3, 160, 320])
+W_conv52 = weight_variable([3, 3, 160, 320])
 b_conv52 = bias_variable([320])
 
 h_conv51 = tf.nn.relu(conv2d(h_pool4, W_conv51) + b_conv51)
 h_conv52 = tf.nn.relu(conv2d(h_conv51, W_conv52) + b_conv52)
 h_pool5 = avg_pool_7x7(h_conv52)
+h_pool5_reshape = tf.reshape(h_pool5, [-1, 320])
 
-keep_prob = 1-DROPOUT_RATE
-h_dropout = tf.nn.dropout(h_pool5, keep_prob)
+W_fc1 = weight_variable([320, 320])
+b_fc1 = bias_variable([320])
 
+h_fc1 = tf.nn.relu(tf.matmul(h_pool5_reshape, W_fc1) + b_fc1)
 
+# END OF FEATURE GENERATION
 
-#W_fc1 = weight_variable(
+# variable dropout for training vs testing
+keep_prob = tf.placeholder(tf.float32)
+h_dropout = tf.nn.dropout(h_fc1, keep_prob)
 
+W_fc2 = weight_variable([320, 10575])
+b_fc2 = bias_variable([10575])
 
+y_conv = tf.nn.softmax(tf.matmul(h_dropout, W_fc2) + b_fc2)
 
 #W_fc1 = weight_variable([7 * 7 * 64, 1024])
 #b_fc1 = bias_variable([1024])
@@ -124,8 +132,6 @@ h_dropout = tf.nn.dropout(h_pool5, keep_prob)
 
 #y_conv=tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
 
-
-
 cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
@@ -134,8 +140,9 @@ sess.run(tf.initialize_all_variables())
 
 logfile = open("teststats.txt", 'w')
 
-for i in range(20000):
-  batch = mnist.train.next_batch(50)
+for i in range(10):
+  #batch = mnist.train.next_batch(50)
+  batch = [[[0]*10000], [[0]*10575]]
   if i%100 == 0:
     train_accuracy = accuracy.eval(feed_dict={
         x:batch[0], y_: batch[1], keep_prob: 1.0})
@@ -144,8 +151,8 @@ for i in range(20000):
   train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
 
 
-test_result = accuracy.eval(feed_dict={
-    x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0})
+test_result = 42#accuracy.eval(feed_dict={
+    #x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0})
 
 print("test accuracy %g"%test_result)
 
