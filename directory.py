@@ -5,7 +5,7 @@ import tensorflow as tf
 #tempFile = tf.gfile.GFile('~')
 
 
-get_cropped_CASIA_files():	
+def get_cropped_CASIA_files():	
 	image_files = []
 
 	baseFileName = './casia_mtcnn_cropped/'
