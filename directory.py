@@ -8,9 +8,9 @@ import tensorflow as tf
 def get_cropped_CASIA_files():	
 	image_files = []
 
-	baseFileName = './casia_mtcnn_cropped/'
+	baseFileName = './faces/' #'./casia_mtcnn_cropped/'
 	#files = tf.gfile.Walk('./casia_mtcnn_cropped/CASIA_2426012')
-	files = tf.gfile.Walk('./casia_mtcnn_cropped/')
+	files = tf.gfile.Walk(baseFileName)
 	for file in files:
 	#	print(file)
 		tempFile = []
@@ -18,8 +18,13 @@ def get_cropped_CASIA_files():
 			tempFileName = file[0] + '/' + jpeg
 			#tempFileName = baseFileName + 'CASIA_2426012/' + jpeg 
 			tempFile.append(tempFileName)
-		image_files.append(tempFile)	
+		
+		if len(tempFile) > 0:
+			image_files.append(tempFile)	
 	#print(image_files)
 	return image_files
 
 
+files = get_cropped_CASIA_files()
+with open('cropped_file_names.txt', 'w') as image_file:
+	image_file.write('\n'.join([(filedata[0]+' '+filedata[0].split('/')[-2]) for filedata in files]))
