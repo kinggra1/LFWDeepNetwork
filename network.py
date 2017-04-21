@@ -1,34 +1,39 @@
-from tensorflow.examples.tutorials.mnist import input_data
-
 import build_image_data as builder
 import tensorflow as tf
 sess = tf.InteractiveSession()
 
 import numpy as np
+import time
 
 import directory
 
-files = directory.get_cropped_CASIA_files()
+#files = directory.get_cropped_CASIA_files()
 
+logfile = 'teststats_manual.txt'
+trainingfile = './26faces_split/train-00000-of-00001'
+testingfile = './26faces_split/validation-00000-of-00001'
 
-OUTPUT_SIZE = 26 # number of faces we are classifying
+OUTPUT_SIZE = 26  # number of faces we are classifying
 INPUT_WIDTH = 110
 INPUT_HEIGHT = 110
 CHANNELS = 3
-DROPOUT_RATE = 0.4
+RANDOM_DISTORTIONS = True
+DROPOUT_KEEP_RATE = 0.8
 
+ENQUEUE_THREADS = 4
+TRAINING_STEPS = 100
 BATCH_SIZE = 100
-MIN_AFTER_DEQUE = 100
+MIN_AFTER_DEQUE = 1000
 CAPACITY = MIN_AFTER_DEQUE + 3*BATCH_SIZE
 
 
 # initialize weight variables with random, small, positive values
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
+  initial = tf.truncated_normal(shape, stddev=0.1)-0.05
   return tf.Variable(initial)
 
 def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
+  initial = tf.constant(0.1, shape=shape)-0.05
   return tf.Variable(initial)
 
 def conv2d(x, W):
@@ -67,6 +72,30 @@ def dense_to_one_hot(labels_dense, num_classes=10):
   return labels_one_hot
 
 
+def random_distortions(image):
+  # Randomly flip horizontally.
+  with tf.name_scope("flip_horizontal", values=[image]):
+    image = tf.image.random_flip_left_right(image)
+
+  # Randomly distort the colors based on thread id.
+  color_ordering = 0
+  with tf.name_scope("distort_color", values=[image]):
+    if color_ordering == 0:
+      image = tf.image.random_brightness(image, max_delta=32. / 255.)
+      image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+      image = tf.image.random_hue(image, max_delta=0.032)
+      image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
+    elif color_ordering == 1:
+      image = tf.image.random_brightness(image, max_delta=32. / 255.)
+      image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
+      image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+      image = tf.image.random_hue(image, max_delta=0.032)
+
+    # The random_* ops do not necessarily clamp.
+    image = tf.clip_by_value(image, 0.0, 1.0)
+    return image
+
+
 def read_and_decode(filename_queue):
   reader = tf.TFRecordReader()
   _, serialized_example = reader.read(filename_queue)
@@ -96,7 +125,7 @@ def read_and_decode(filename_queue):
   image = tf.image.decode_jpeg(features['image/encoded'], channels=3)
 
   #print(image.get_shape().as_list())
-  image = tf.reshape(image, [INPUT_WIDTH*INPUT_HEIGHT,CHANNELS])
+  image = tf.reshape(image, [INPUT_WIDTH, INPUT_HEIGHT,CHANNELS])
   #image.set_shape([INPUT_WIDTH*INPUT_HEIGHT*CHANNELS])
 
   # OPTIONAL: Could reshape into a 28x28 image and apply distortions
@@ -105,31 +134,59 @@ def read_and_decode(filename_queue):
   # into a vector, we don't bother.
 
   # Convert from [0, 255] -> [-0.5, 0.5] floats.
-  image = tf.cast(image, tf.float32) * (1. / 255) - 0.5
+  image = tf.cast(image, tf.float32) * (1. / 255)# - 0.5
 
   # Convert label from a scalar uint8 tensor to an int32 scalar.
   #label = tf.cast(features['image/class/label'], tf.int32)
   label = tf.one_hot(features['image/class/label'], OUTPUT_SIZE, axis=-1)
   #label = tf.reshape(label, [OUTPUT_SIZE])
-  return image, label
+  if (RANDOM_DISTORTIONS):
+    image = random_distortions(image)
 
-
+  return image-0.5, label
 
 
 # training data to plug into graph
 filename_queue = tf.train.string_input_producer(
-    ['./faces/train-00000-of-00001'], num_epochs=None)
+    [trainingfile], num_epochs=None)
+
+
+image_queue = tf.RandomShuffleQueue(CAPACITY, MIN_AFTER_DEQUE, [tf.float32, tf.float32], shapes=[[INPUT_WIDTH, INPUT_HEIGHT, CHANNELS], [OUTPUT_SIZE]])
+
+image, label = read_and_decode(filename_queue)
+enqueue_op = image_queue.enqueue([image, label])
+
+	#tf.train.shuffle_batch(
+      #[image, label], batch_size=BATCH_SIZE, capacity=CAPACITY,
+      #min_after_dequeue=MIN_AFTER_DEQUE))
+
+
+qr = tf.train.QueueRunner(image_queue, [enqueue_op] * ENQUEUE_THREADS)
+
+# are we training or testing?
+#training = tf.placeholder(tf.bool)
+
+# set up an operator to grab training or validation images
+#x, y_ = tf.cond(training, lambda: image_queue.dequeue_many(BATCH_SIZE), lambda: tf.train.shuffle_batch([image, label], batch_size=100, capacity=200, min_after_dequeue=50))
+
+
+#images_train, labels_train = image_queue.dequeue_many(BATCH_SIZE)
+#images_test, labels_test = tf.train.shuffle_batch([image, label], batch_size=100, capacity=200, min_after_dequeue=50)
+#x = tf.placeholder_with_default(images_train, shape=[BATCH_SIZE, INPUT_WIDTH, INPUT_HEIGHT, CHANNELS])
+#y_ = tf.placeholder_with_default(labels_train, shape=[BATCH_SIZE, OUTPUT_SIZE])
 
 
 # Before we used placeholders and a feed dict, lets update to just plug the tensors right in now
 #x = tf.placeholder(tf.float32, shape=[None, INPUT_WIDTH*INPUT_HEIGHT])
 #y_ = tf.placeholder(tf.float32, shape=[None, OUTPUT_SIZE])
-image, label = read_and_decode(filename_queue)
+#image, label = read_and_decode(filename_queue)
 #x, y_ = tf.train.batch([image, label], 1)
 
-x, y_  = tf.train.shuffle_batch(
-      [image, label], batch_size=BATCH_SIZE, capacity=CAPACITY,
-      min_after_dequeue=MIN_AFTER_DEQUE)
+x, y_ = image_queue.dequeue_many(BATCH_SIZE)
+
+#x, y_  = tf.train.shuffle_batch(
+#      [image, label], batch_size=BATCH_SIZE, capacity=CAPACITY,
+#      min_after_dequeue=MIN_AFTER_DEQUE)
 
 #shape represents patch size x/y, num input channels, num output channels
 W_conv11 = weight_variable([3, 3, 3, 32])
@@ -189,33 +246,21 @@ h_fc1 = tf.nn.relu(tf.matmul(h_pool5_reshape, W_fc1) + b_fc1)
 
 # variable dropout for training vs testing
 keep_prob = tf.placeholder(tf.float32)
-h_dropout = tf.nn.dropout(h_fc1, keep_prob)
+h_dropout = tf.nn.dropout(h_fc1, keep_prob, name='features')
 
 W_fc2 = weight_variable([320, OUTPUT_SIZE])
 b_fc2 = bias_variable([OUTPUT_SIZE])
 
-y_conv = tf.nn.softmax(tf.matmul(h_dropout, W_fc2) + b_fc2)
-
-#W_fc1 = weight_variable([7 * 7 * 64, 1024])
-#b_fc1 = bias_variable([1024])
-
-#h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
-#h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
-
-#keep_prob = tf.placeholder(tf.float32)
-#h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
-
-#W_fc2 = weight_variable([1024, 10])
-#b_fc2 = bias_variable([10])
-
-#y_conv=tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
-
+#y_conv = tf.nn.softmax(tf.matmul(h_dropout, W_fc2) + b_fc2)
+y_conv = tf.matmul(h_dropout, W_fc2) + b_fc2
 
 print(y_conv.get_shape().as_list())
 print(y_.get_shape().as_list())
 
-cross_entropy = tf.reduce_mean(-tf.reduce_sum(tf.to_float(y_) * tf.log(y_conv), 1))
-train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+#cross_entropy = tf.reduce_mean(-tf.reduce_sum(tf.to_float(y_) * tf.log(y_conv), 1))
+loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=y_conv, labels=tf.to_float(y_)))
+
+train_step = tf.train.AdamOptimizer(1e-4).minimize(loss)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
@@ -223,12 +268,13 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 
 
+def datalog(message):
+  with open(logfile, 'a') as f:
+    f.write(message)
 
 
-
-
-
-logfile = open("teststats.txt", 'w')
+# Create saver for saving graph variables/weights
+saver = tf.train.Saver()
 
 # Create the graph, etc.
 init_op = tf.global_variables_initializer()
@@ -237,47 +283,56 @@ init_op = tf.global_variables_initializer()
 sess.run(init_op)
 sess.run(tf.local_variables_initializer())
 
-# Start input enqueue threads.
-coord = tf.train.Coordinator()
-threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-print("Let's get ready to traaaaaaain!")
-
-print(y_.eval(sess=sess))
-
-try:
-  if 1: #while not coord.should_stop():
-    # Run training steps or whatever
-
-    for i in range(1000):
-      
-      train_step.run(feed_dict={keep_prob: 0.5})
-      
-      if i%100 == 0 or 1:
-        train_accuracy = accuracy.eval(feed_dict={
-           keep_prob: 1.0})
-        print("step %d, training accuracy %g"%(i, train_accuracy))
-        logfile.write("step %d, training accuracy %g\n"%(i, train_accuracy))
 
 
+if __name__ == "__main__":
 
-except tf.errors.OutOfRangeError:
-    print('Done training -- epoch limit reached')
-finally:
-    # When done, ask the threads to stop.
-    coord.request_stop()
-
-# Wait for threads to finish.
-coord.join(threads)
+  # Start input enqueue threads.
+  coord = tf.train.Coordinator()
+  enqueue_threads = qr.create_threads(sess, coord=coord, start=True)
+  threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
 
-test_result = accuracy.eval(feed_dict={
-    keep_prob: 1.0})
+  datalog("step, training accuracy, validation accuracy")
 
-print("test accuracy %g"%test_result)
 
-logfile.write("test accuracy %g\n"%test_result)
+  print("Let's get ready to traaaaaaain!")
+  try:
+    if 1: #while not coord.should_stop():
+      # Run training steps or whatever
 
-logfile.close()
+      for i in range(TRAINING_STEPS):
+        train_step.run(feed_dict={keep_prob: DROPOUT_KEEP_RATE})
+        #print(tf.argmax(y_,1).eval(feed_dict={keep_prob: 0.5}))
+        #print(tf.argmax(y_conv,1).eval(feed_dict={keep_prob: 0.5}))
+        if i%10 == 0:
+          train_accuracy = accuracy.eval(feed_dict={
+             keep_prob: 1.0})#, x:images_test.eval(), y_:labels_test.eval()})
+          print("step %d, training accuracy %g"%(i, train_accuracy))
+          datalog("%d, %g\n"%(i, train_accuracy))
+
+
+
+  except tf.errors.OutOfRangeError:
+      print('Done training -- epoch limit reached')
+  finally:
+      # When done, ask the threads to stop.
+      coord.request_stop()
+  
+  # Wait for threads to finish.
+  coord.join(threads)
+  
+  tf.train.write_graph(sess.graph_def, 'trained_graph', 'network.pbtxt')
+  saver.save(sess, 'trained_graph/network.ckpt')
+  #tf.train.export_meta_graph('./trained_graph/network.meta')
+
+  test_result = accuracy.eval(feed_dict={
+      keep_prob: 1.0})
+
+  print("test accuracy %g"%test_result)
+
+  datalog("test accuracy %g\n"%test_result)
+
+
 
 sess.close()
