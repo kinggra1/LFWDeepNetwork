@@ -9,15 +9,15 @@ import directory
 
 #files = directory.get_cropped_CASIA_files()
 
-features_file = 'cnn_featurestest99.txt'
+features_file = 'cnn_features26.txt'
 logfile = 'log.txt'
-lfw_dir = './lfw_mtcnn_cropped/'
+lfw_dir = './lfw_mtcnn_funneled/'
 image_names = './lfw_image_list.txt'
 
-model_checkpoint = 'huge_trained_graph/'
+model_checkpoint = 'trained_graph/'
 
 
-OUTPUT_SIZE = 10575  # number of faces we are classifying
+OUTPUT_SIZE = 26  # number of faces we are classifying
 INPUT_WIDTH = 110
 INPUT_HEIGHT = 110
 CHANNELS = 3
@@ -177,16 +177,16 @@ h_conv52 = tf.nn.relu(conv2d(h_conv51, W_conv52) + b_conv52)
 h_pool5 = avg_pool_7x7(h_conv52)
 h_pool5_reshape = tf.reshape(h_pool5, [-1, 320])
 
-W_fc1 = weight_variable([320, 320])
-b_fc1 = bias_variable([320])
+#W_fc1 = weight_variable([320, 320])
+#b_fc1 = bias_variable([320])
 
-h_fc1 = tf.nn.relu(tf.matmul(h_pool5_reshape, W_fc1) + b_fc1)
+#h_fc1 = tf.nn.relu(tf.matmul(h_pool5_reshape, W_fc1) + b_fc1)
 
 # END OF FEATURE GENERATION
 
 # variable dropout for training vs testing
 keep_prob = tf.placeholder(tf.float32)
-h_dropout = tf.nn.dropout(h_fc1, keep_prob, name='features')
+h_dropout = tf.nn.dropout(h_pool5_reshape, keep_prob, name='features')
 
 W_fc2 = weight_variable([320, OUTPUT_SIZE])
 b_fc2 = bias_variable([OUTPUT_SIZE])
@@ -252,10 +252,10 @@ if __name__ == "__main__":
       for image in image_names_file:
         image = image.strip()
         last_ = image.rfind('_')
-        name = image[0:last_].replace('_','-')
-        person = "LFW_"+name
+        name = image[0:last_] #.replace('_','-')
+        person = name #"LFW_"+name
         
-        filename = lfw_dir+'/'+person+'/'+"LFW_"+image
+        filename = lfw_dir+'/'+person+'/'+image #"LFW_"+image
         #image_data, label = decode_image(lfw_dir+'/'+person+'/'+"LFW_"+image)
         
         filedata = open(filename, 'rb')
@@ -269,7 +269,7 @@ if __name__ == "__main__":
         #label = tf.one_hot(0, OUTPUT_SIZE, axis=-1).eval()
 
         #train_step.run(feed_dict={keep_prob: 0.5})
-        features = h_dropout.eval(feed_dict={keep_prob:1.0, image_string:filedata.read()}) 
+        features = h_pool5_reshape.eval(feed_dict={keep_prob:1.0, image_string:filedata.read()}) 
         writeout(features.tolist())       
         #print(features.tolist())
 

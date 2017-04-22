@@ -9,9 +9,10 @@ import directory
 
 #files = directory.get_cropped_CASIA_files()
 
-logfile = 'teststats_manual.txt'
-trainingfile = './26faces_split/train-00000-of-00001'
+logfile = 'train_log.txt'
+trainingfile = './26faces/train-00000-of-00001'
 testingfile = './26faces_split/validation-00000-of-00001'
+graph_dir = './trained_graph'
 
 OUTPUT_SIZE = 26  # number of faces we are classifying
 INPUT_WIDTH = 110
@@ -21,7 +22,7 @@ RANDOM_DISTORTIONS = True
 DROPOUT_KEEP_RATE = 0.8
 
 ENQUEUE_THREADS = 4
-TRAINING_STEPS = 100
+TRAINING_STEPS = 1600
 BATCH_SIZE = 100
 MIN_AFTER_DEQUE = 1000
 CAPACITY = MIN_AFTER_DEQUE + 3*BATCH_SIZE
@@ -29,11 +30,11 @@ CAPACITY = MIN_AFTER_DEQUE + 3*BATCH_SIZE
 
 # initialize weight variables with random, small, positive values
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)-0.05
+  initial = tf.truncated_normal(shape, stddev=0.1)
   return tf.Variable(initial)
 
 def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)-0.05
+  initial = tf.constant(0.1, shape=shape)
   return tf.Variable(initial)
 
 def conv2d(x, W):
@@ -72,23 +73,23 @@ def dense_to_one_hot(labels_dense, num_classes=10):
   return labels_one_hot
 
 
-def random_distortions(image):
+def random_distortions(image, thread_id=0):
   # Randomly flip horizontally.
   with tf.name_scope("flip_horizontal", values=[image]):
     image = tf.image.random_flip_left_right(image)
 
   # Randomly distort the colors based on thread id.
-  color_ordering = 0
+  color_ordering = thread_id
   with tf.name_scope("distort_color", values=[image]):
     if color_ordering == 0:
-      image = tf.image.random_brightness(image, max_delta=32. / 255.)
-      image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+      image = tf.image.random_brightness(image, max_delta=16. / 255.)
+      image = tf.image.random_saturation(image, lower=0.75, upper=1.25)
       image = tf.image.random_hue(image, max_delta=0.032)
-      image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
+      image = tf.image.random_contrast(image, lower=0.75, upper=1.25)
     elif color_ordering == 1:
-      image = tf.image.random_brightness(image, max_delta=32. / 255.)
-      image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-      image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+      image = tf.image.random_brightness(image, max_delta=16. / 255.)
+      image = tf.image.random_contrast(image, lower=0.75, upper=1.25)
+      image = tf.image.random_saturation(image, lower=0.75, upper=1.25)
       image = tf.image.random_hue(image, max_delta=0.032)
 
     # The random_* ops do not necessarily clamp.
@@ -96,7 +97,7 @@ def random_distortions(image):
     return image
 
 
-def read_and_decode(filename_queue):
+def read_and_decode(filename_queue, thread_id=0):
   reader = tf.TFRecordReader()
   _, serialized_example = reader.read(filename_queue)
   feature_map = {
@@ -141,9 +142,9 @@ def read_and_decode(filename_queue):
   label = tf.one_hot(features['image/class/label'], OUTPUT_SIZE, axis=-1)
   #label = tf.reshape(label, [OUTPUT_SIZE])
   if (RANDOM_DISTORTIONS):
-    image = random_distortions(image)
+    image = random_distortions(image, thread_id)
 
-  return image-0.5, label
+  return image, label
 
 
 # training data to plug into graph
@@ -153,15 +154,20 @@ filename_queue = tf.train.string_input_producer(
 
 image_queue = tf.RandomShuffleQueue(CAPACITY, MIN_AFTER_DEQUE, [tf.float32, tf.float32], shapes=[[INPUT_WIDTH, INPUT_HEIGHT, CHANNELS], [OUTPUT_SIZE]])
 
-image, label = read_and_decode(filename_queue)
-enqueue_op = image_queue.enqueue([image, label])
+#image, label = read_and_decode(filename_queue)
+#enqueue_op = image_queue.enqueue([image, label])
 
 	#tf.train.shuffle_batch(
       #[image, label], batch_size=BATCH_SIZE, capacity=CAPACITY,
       #min_after_dequeue=MIN_AFTER_DEQUE))
 
+enqueue_ops = []
+for i in range(ENQUEUE_THREADS):
+  image, label = read_and_decode(filename_queue, i)
+  enqueue_op = image_queue.enqueue([image, label])
+  enqueue_ops.append(enqueue_op)
 
-qr = tf.train.QueueRunner(image_queue, [enqueue_op] * ENQUEUE_THREADS)
+qr = tf.train.QueueRunner(image_queue, enqueue_ops)
 
 # are we training or testing?
 #training = tf.placeholder(tf.bool)
@@ -237,16 +243,16 @@ h_conv52 = tf.nn.relu(conv2d(h_conv51, W_conv52) + b_conv52)
 h_pool5 = avg_pool_7x7(h_conv52)
 h_pool5_reshape = tf.reshape(h_pool5, [-1, 320])
 
-W_fc1 = weight_variable([320, 320])
-b_fc1 = bias_variable([320])
+#W_fc1 = weight_variable([320, 320])
+#b_fc1 = bias_variable([320])
 
-h_fc1 = tf.nn.relu(tf.matmul(h_pool5_reshape, W_fc1) + b_fc1)
+#h_fc1 = tf.nn.relu(tf.matmul(h_pool5_reshape, W_fc1) + b_fc1)
 
 # END OF FEATURE GENERATION
 
 # variable dropout for training vs testing
 keep_prob = tf.placeholder(tf.float32)
-h_dropout = tf.nn.dropout(h_fc1, keep_prob, name='features')
+h_dropout = tf.nn.dropout(h_pool5_reshape, keep_prob, name='features')
 
 W_fc2 = weight_variable([320, OUTPUT_SIZE])
 b_fc2 = bias_variable([OUTPUT_SIZE])
@@ -274,7 +280,7 @@ def datalog(message):
 
 
 # Create saver for saving graph variables/weights
-saver = tf.train.Saver()
+saver = tf.train.Saver(max_to_keep=100)
 
 # Create the graph, etc.
 init_op = tf.global_variables_initializer()
@@ -293,7 +299,7 @@ if __name__ == "__main__":
   threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
 
-  datalog("step, training accuracy, validation accuracy")
+  datalog("step, training accuracy, validation accuracy\n")
 
 
   print("Let's get ready to traaaaaaain!")
@@ -310,8 +316,8 @@ if __name__ == "__main__":
              keep_prob: 1.0})#, x:images_test.eval(), y_:labels_test.eval()})
           print("step %d, training accuracy %g"%(i, train_accuracy))
           datalog("%d, %g\n"%(i, train_accuracy))
-
-
+        if i%10000 == 0:
+          saver.save(sess, graph_dir+'/network.ckpt', global_step=i)
 
   except tf.errors.OutOfRangeError:
       print('Done training -- epoch limit reached')
@@ -322,8 +328,8 @@ if __name__ == "__main__":
   # Wait for threads to finish.
   coord.join(threads)
   
-  tf.train.write_graph(sess.graph_def, 'trained_graph', 'network.pbtxt')
-  saver.save(sess, 'trained_graph/network.ckpt')
+  tf.train.write_graph(sess.graph_def, graph_dir, 'network.pbtxt')
+  saver.save(sess, graph_dir+'/network.ckpt', global_step=TRAINING_STEPS)
   #tf.train.export_meta_graph('./trained_graph/network.meta')
 
   test_result = accuracy.eval(feed_dict={
