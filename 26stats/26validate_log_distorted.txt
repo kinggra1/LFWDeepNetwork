@@ -1,11 +1,12 @@
 step, training accuracy, validation accuracy
-0, 0.04
-1, 0.26
-2, 0.37
-3, 0.31
-4, 0.4
-5, 0.49
-6, 0.42
-7, 0.48
-8, 0.46
-9, 0.38
+step, training accuracy, validation accuracy
+0, 0.018
+1, 0.287
+2, 0.305
+3, 0.327
+4, 0.368
+5, 0.396
+6, 0.451
+7, 0.434
+8, 0.471
+9, 0.444
