@@ -9,20 +9,20 @@ import directory
 
 #files = directory.get_cropped_CASIA_files()
 
-logfile = 'train_log.txt'
-trainingfile = './26faces/train-00000-of-00001'
+logfile = '10575train_log_newqsub.txt'
+trainingfile = './test/train-00000-of-00001'
 testingfile = './26faces_split/validation-00000-of-00001'
-graph_dir = './trained_graph'
+graph_dir = './10575trained_graph_distorted_qsub'
 
-OUTPUT_SIZE = 26  # number of faces we are classifying
+OUTPUT_SIZE = 10575  # number of faces we are classifying
 INPUT_WIDTH = 110
 INPUT_HEIGHT = 110
 CHANNELS = 3
 RANDOM_DISTORTIONS = True
-DROPOUT_KEEP_RATE = 0.8
+DROPOUT_KEEP_RATE = 0.6
 
 ENQUEUE_THREADS = 4
-TRAINING_STEPS = 1600
+TRAINING_STEPS = 300000
 BATCH_SIZE = 100
 MIN_AFTER_DEQUE = 1000
 CAPACITY = MIN_AFTER_DEQUE + 3*BATCH_SIZE
@@ -123,7 +123,7 @@ def read_and_decode(filename_queue, thread_id=0):
 
   # Convert from a scalar string tensor (whose single string has
   #image = tf.decode_raw(features['image/encoded'], tf.uint8)
-  image = tf.image.decode_jpeg(features['image/encoded'], channels=3)
+  image = tf.image.decode_jpeg(features['image/encoded'], channels=CHANNELS)
 
   #print(image.get_shape().as_list())
   image = tf.reshape(image, [INPUT_WIDTH, INPUT_HEIGHT,CHANNELS])
@@ -135,7 +135,7 @@ def read_and_decode(filename_queue, thread_id=0):
   # into a vector, we don't bother.
 
   # Convert from [0, 255] -> [-0.5, 0.5] floats.
-  image = tf.cast(image, tf.float32) * (1. / 255)# - 0.5
+  image = tf.cast(image, tf.float32) * (1. / 255)
 
   # Convert label from a scalar uint8 tensor to an int32 scalar.
   #label = tf.cast(features['image/class/label'], tf.int32)
@@ -144,7 +144,7 @@ def read_and_decode(filename_queue, thread_id=0):
   if (RANDOM_DISTORTIONS):
     image = random_distortions(image, thread_id)
 
-  return image, label
+  return image-0.5, label
 
 
 # training data to plug into graph
@@ -200,7 +200,7 @@ b_conv11 = bias_variable([32])
 W_conv12 = weight_variable([3, 3, 32, 64])
 b_conv12 = bias_variable([64])
 
-x_image = tf.reshape(x, [-1, INPUT_WIDTH, INPUT_HEIGHT, 3])
+x_image = tf.reshape(x, [-1, INPUT_WIDTH, INPUT_HEIGHT, CHANNELS])
 
 h_conv11 = tf.nn.relu(conv2d(x_image, W_conv11) + b_conv11)
 h_conv12 = tf.nn.relu(conv2d(h_conv11, W_conv12) + b_conv12)
@@ -239,7 +239,7 @@ W_conv52 = weight_variable([3, 3, 160, 320])
 b_conv52 = bias_variable([320])
 
 h_conv51 = tf.nn.relu(conv2d(h_pool4, W_conv51) + b_conv51)
-h_conv52 = tf.nn.relu(conv2d(h_conv51, W_conv52) + b_conv52)
+h_conv52 = conv2d(h_conv51, W_conv52) + b_conv52
 h_pool5 = avg_pool_7x7(h_conv52)
 h_pool5_reshape = tf.reshape(h_pool5, [-1, 320])
 
@@ -280,7 +280,7 @@ def datalog(message):
 
 
 # Create saver for saving graph variables/weights
-saver = tf.train.Saver(max_to_keep=100)
+saver = tf.train.Saver(max_to_keep=200)
 
 # Create the graph, etc.
 init_op = tf.global_variables_initializer()
@@ -311,7 +311,7 @@ if __name__ == "__main__":
         train_step.run(feed_dict={keep_prob: DROPOUT_KEEP_RATE})
         #print(tf.argmax(y_,1).eval(feed_dict={keep_prob: 0.5}))
         #print(tf.argmax(y_conv,1).eval(feed_dict={keep_prob: 0.5}))
-        if i%10 == 0:
+        if i%100 == 0:
           train_accuracy = accuracy.eval(feed_dict={
              keep_prob: 1.0})#, x:images_test.eval(), y_:labels_test.eval()})
           print("step %d, training accuracy %g"%(i, train_accuracy))

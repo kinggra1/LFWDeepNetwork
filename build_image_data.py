@@ -75,11 +75,11 @@ import threading
 import numpy as np
 import tensorflow as tf
 
-tf.app.flags.DEFINE_string('train_directory', './faces/',
+tf.app.flags.DEFINE_string('train_directory', './26faces_split/train/',
                            'Training data directory')
-tf.app.flags.DEFINE_string('validation_directory', './faces/',
+tf.app.flags.DEFINE_string('validation_directory', './26faces_split/test/',
                            'Validation data directory')
-tf.app.flags.DEFINE_string('output_directory', './faces/',
+tf.app.flags.DEFINE_string('output_directory', './26faces_split/',
                            'Output data directory')
 
 tf.app.flags.DEFINE_integer('train_shards', 1,
